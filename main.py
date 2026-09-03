@@ -44,10 +44,6 @@ async def health():
     return {"status": "ok"}
 
 @app.get("/")
-def root():
-    return {"message": "Slashh Discount API is live", "docs": "/docs"}
-
-@app.get("/")
 async def serve_ui():
     return FileResponse("index.html")
 
