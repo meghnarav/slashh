@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Slashh — Real-Time Discount Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: { 50: '#eef2ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen py-8 px-4 sm:px-6">
+  <div class="max-w-xl mx-auto space-y-6">
+
+    <!-- Header -->
+    <div class="text-center space-y-1">
+      <h1 class="text-3xl font-black tracking-tight text-slate-900">
+        Slash<span class="text-brand-600">h</span>
+      </h1>
+      <p class="text-sm text-slate-500">Calculate best card discounts & see missed savings</p>
+    </div>
+
+    <!-- Section 1: Portfolio Selector -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700">1. Your Cards</h2>
+        <span class="text-xs text-slate-400">Saved locally</span>
+      </div>
+      <p class="text-xs text-slate-500 mb-3">Select the cards in your wallet:</p>
+      <div id="cardsList" class="flex flex-wrap gap-2">
+        <div class="text-xs text-slate-400 py-2">Loading cards...</div>
+      </div>
+    </div>
+
+    <!-- Section 2: Transaction Input -->
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/80 space-y-4">
+      <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700">2. Where Are You Spending?</h2>
+
+      <div class="space-y-1">
+        <label class="text-xs font-semibold text-slate-600">Select Merchant</label>
+        <select id="merchantSelect" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="">Loading merchants...</option>
+        </select>
+      </div>
+
+      <div class="space-y-1">
+        <label class="text-xs font-semibold text-slate-600">Order Amount (₹)</label>
+        <input id="spendInput" type="number" value="1000" placeholder="e.g. 850" class="w-full bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+      </div>
+
+      <button id="calculateBtn" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl shadow-md shadow-brand-500/20 transition-all active:scale-[0.99]">
+        Find Best Discount
+      </button>
+    </div>
+
+    <!-- Section 3: Result Cards (Hidden by default) -->
+    <div id="resultsArea" class="space-y-4 hidden">
+      <!-- Best Held Card -->
+      <div id="bestHeldCard" class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 text-emerald-900 space-y-2">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-xs uppercase font-bold tracking-wide text-emerald-700">Recommended From Your Wallet</span>
+            <h3 id="bestCardName" class="text-lg font-bold">HDFC Millennia</h3>
+          </div>
+          <span id="bestSavings" class="text-2xl font-black text-emerald-600">₹0</span>
+        </div>
+        <div class="flex items-center gap-2 pt-1">
+          <span class="text-xs font-semibold text-emerald-700">Coupon code:</span>
+          <code id="promoCode" class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded font-mono font-bold">NONE</code>
+        </div>
+      </div>
+
+      <!-- Opportunity Nudge Card (Affiliate Hook) -->
+      <div id="nudgeCard" class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-lg space-y-3 hidden">
+        <div class="flex justify-between items-start">
+          <div>
+            <span class="text-[11px] font-bold uppercase tracking-widest text-indigo-300">💡 Left On The Table</span>
+            <h4 id="nudgeCardName" class="text-base font-bold text-white mt-0.5">SBI Cashback Card</h4>
+          </div>
+          <div class="text-right">
+            <span class="text-xs text-indigo-300 block">Extra Savings</span>
+            <span id="nudgeExtra" class="text-lg font-black text-amber-400">+₹0</span>
+          </div>
+        </div>
+        <p class="text-xs text-slate-300">
+          You could have saved a total of <b id="nudgeTotal" class="text-white">₹0</b> with this card instead.
+        </p>
+        <a id="nudgeApplyBtn" href="#" target="_blank" class="inline-block w-full text-center bg-white hover:bg-slate-100 text-slate-900 font-bold text-xs py-2.5 rounded-lg transition-colors">
+          Apply for this Card (Zero Annual Fee Offer) →
+        </a>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin.includes(':8000') ? 'http://127.0.0.1:8000' : '';
+    let heldCardIds = JSON.parse(localStorage.getItem('heldCardIds') || '[]');
+
+    // 1. Initial Load: Fetch metadata (cards & merchants)
+    async function init() {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/meta`);
+        const data = await res.json();
+
+        // Render Cards Checkboxes
+        const cardsList = document.getElementById('cardsList');
+        cardsList.innerHTML = '';
+        data.cards.forEach(card => {
+          const isChecked = heldCardIds.includes(card.id);
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.dataset.id = card.id;
+          chip.className = `px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
+            isChecked ? 'bg-brand-600 text-white border-brand-600 shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200 hover:border-slate-300'
+          }`;
+          chip.innerText = card.card_name;
+          chip.onclick = () => toggleCard(card.id, chip);
+          cardsList.appendChild(chip);
+        });
+
+        // Populate Merchants Dropdown
+        const merchantSelect = document.getElementById('merchantSelect');
+        merchantSelect.innerHTML = '<option value="">-- Choose a store --</option>';
+        data.merchants.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.id;
+          opt.innerText = `${m.name} (${m.category})`;
+          merchantSelect.appendChild(opt);
+        });
+
+      } catch (err) {
+        console.error('Failed to load metadata:', err);
+      }
+    }
+
+    function toggleCard(cardId, chipElement) {
+      if (heldCardIds.includes(cardId)) {
+        heldCardIds = heldCardIds.filter(id => id !== cardId);
+        chipElement.className = 'px-3 py-1.5 rounded-lg text-xs font-medium border bg-slate-100 text-slate-700 border-slate-200';
+      } else {
+        heldCardIds.push(cardId);
+        chipElement.className = 'px-3 py-1.5 rounded-lg text-xs font-medium border bg-brand-600 text-white border-brand-600 shadow-sm';
+      }
+      localStorage.setItem('heldCardIds', JSON.stringify(heldCardIds));
+    }
+
+    // 2. Calculation handler
+    document.getElementById('calculateBtn').onclick = async () => {
+      const merchantId = document.getElementById('merchantSelect').value;
+      const spendAmount = parseFloat(document.getElementById('spendInput').value);
+
+      if (!merchantId || isNaN(spendAmount) || spendAmount <= 0) {
+        alert('Please select a merchant and enter a valid order amount.');
+        return;
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/discounts/calculate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            merchant_id: parseInt(merchantId),
+            spend_amount: spendAmount,
+            held_card_ids: heldCardIds
+          })
+        });
+
+        const data = await res.json();
+        const resultsArea = document.getElementById('resultsArea');
+        resultsArea.classList.remove('hidden');
+
+        // Best Held Card UI
+        const bestCardEl = document.getElementById('bestHeldCard');
+        if (data.best_held_card && data.best_held_card.savings > 0) {
+          bestCardEl.classList.remove('hidden');
+          document.getElementById('bestCardName').innerText = data.best_held_card.card_name;
+          document.getElementById('bestSavings').innerText = `₹${data.best_held_card.savings}`;
+          document.getElementById('promoCode').innerText = data.best_held_card.promo_code || 'APPLIED AT CHECKOUT';
+        } else {
+          document.getElementById('bestCardName').innerText = 'No Card Offers Available';
+          document.getElementById('bestSavings').innerText = '₹0';
+          document.getElementById('promoCode').innerText = 'N/A';
+        }
+
+        // Missed Opportunity / Affiliate Card UI
+        const nudgeCard = document.getElementById('nudgeCard');
+        if (data.missed_opportunity) {
+          nudgeCard.classList.remove('hidden');
+          document.getElementById('nudgeCardName').innerText = data.missed_opportunity.card_name;
+          document.getElementById('nudgeExtra').innerText = `+₹${data.missed_opportunity.difference}`;
+          document.getElementById('nudgeTotal').innerText = `₹${data.missed_opportunity.potential_savings}`;
+          document.getElementById('nudgeApplyBtn').href = data.missed_opportunity.apply_url;
+        } else {
+          nudgeCard.classList.add('hidden');
+        }
+
+      } catch (err) {
+        console.error('Calculation error:', err);
+      }
+    };
+
+    init();
+  </script>
+</body>
+</html>

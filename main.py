@@ -8,10 +8,11 @@ import asyncpg
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.responses import FileResponse
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://devuser:devpassword@localhost:5432/discount_engine"
+    "postgresql://devuser:devpassword@localhost:5432/discount_Finder"
 )
 
 pool: Optional[asyncpg.Pool] = None
@@ -24,7 +25,7 @@ async def lifespan(app: FastAPI):
     if pool:
         await pool.close()
 
-app = FastAPI(title="Slashh Discount Engine", lifespan=lifespan)
+app = FastAPI(title="Slashh Discount Finder", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -45,6 +46,10 @@ async def health():
 @app.get("/")
 def root():
     return {"message": "Slashh Discount API is live", "docs": "/docs"}
+
+@app.get("/")
+async def serve_ui():
+    return FileResponse("index.html")
 
 @app.get("/api/v1/meta")
 async def get_metadata():
